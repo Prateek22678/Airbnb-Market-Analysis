@@ -252,8 +252,10 @@ def clean_listings(
     ref_date = pd.to_datetime("2026-09-17")
     df["days_since_first_review"] = (ref_date - df["first_review"]).dt.days.fillna(0)
     
-    # 7. Normalize neighborhood names
+    # 7. Normalize neighborhood names and night constraints
     df["neighbourhood"] = df["neighbourhood_cleansed"].astype(str).str.strip()
+    df["minimum_nights"] = pd.to_numeric(df["minimum_nights"], errors="coerce").fillna(1).clip(lower=1).astype(int)
+    df["maximum_nights"] = pd.to_numeric(df["maximum_nights"], errors="coerce").fillna(365).clip(lower=1).astype(int)
     
     # 8. Treat Outliers on price
     df_cleaned, price_audit = treat_price_outliers(df, min_price=15.0, upper_percentile=0.995)
@@ -346,8 +348,12 @@ def clean_calendar(
     agg_90["occupancy_rate_90"] = (agg_90["booked_days_90"] / agg_90["days_count_90"]).round(4)
     
     # Merge aggregations
-    occupancy_df = agg_365.merge(agg_30[["listing_id", "occupancy_rate_30"]], on="listing_id", how="left")
-    occupancy_df = occupancy_df.merge(agg_90[["listing_id", "occupancy_rate_90"]], on="listing_id", how="left")
+    occupancy_df = agg_365.merge(agg_30[["listing_id", "booked_days_30", "occupancy_rate_30"]], on="listing_id", how="left")
+    occupancy_df = occupancy_df.merge(agg_90[["listing_id", "booked_days_90", "occupancy_rate_90"]], on="listing_id", how="left")
+    occupancy_df["booked_days_30"] = occupancy_df["booked_days_30"].fillna(0).astype(int)
+    occupancy_df["booked_days_90"] = occupancy_df["booked_days_90"].fillna(0).astype(int)
+    occupancy_df["occupancy_rate_30"] = occupancy_df["occupancy_rate_30"].fillna(0.0)
+    occupancy_df["occupancy_rate_90"] = occupancy_df["occupancy_rate_90"].fillna(0.0)
     
     if output_csv_path:
         occupancy_df.to_csv(output_csv_path, index=False)
