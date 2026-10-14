@@ -1,0 +1,36 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Raw and large processed datasets (Inside Airbnb files exceed GitHub 50-100MB limits)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*.db
+data/processed/*.sqlite
+data/processed/*.csv
+data/processed/*.parquet
+!data/processed/.gitkeep
+
+# IDE and OS metadata
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs and environment
+*.log
+.env
