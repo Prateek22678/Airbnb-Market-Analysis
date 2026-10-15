@@ -87,7 +87,11 @@ def parse_amenities(amenities_raw: Any) -> Tuple[int, Dict[str, int]]:
     Parse amenities string/JSON array to extract total amenity count and
     binary indicator flags for key amenities known to influence price and satisfaction.
     """
-    if pd.isna(amenities_raw) or not amenities_raw:
+    if amenities_raw is None:
+        return 0, {}
+    if isinstance(amenities_raw, float) and np.isnan(amenities_raw):
+        return 0, {}
+    if isinstance(amenities_raw, (list, tuple, set, dict, str)) and len(amenities_raw) == 0:
         return 0, {}
     
     items: List[str] = []
