@@ -156,6 +156,7 @@ def load_ml_bundle() -> Dict[str, Any]:
 
 # Load data and ML model
 df_all = load_market_data()
+df_india_all = get_indian_listings_df()
 ml_bundle = load_ml_bundle()
 
 
@@ -164,106 +165,192 @@ ml_bundle = load_ml_bundle()
 # ---------------------------------------------------------
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/6/69/Airbnb_Logo_B%C3%A9lo.svg", width=140)
-    st.title("Austin Market Explorer")
-    st.markdown("Filter properties to evaluate live market metrics, spatial distributions, and guest sentiment.")
+    
+    market_territory = st.radio(
+        "🌍 Global Market Territory",
+        options=[
+            "🇺🇸 Austin, Texas",
+            "🇮🇳 India Multi-City (17 Corridors & 42 PIN Codes)"
+        ],
+        index=0,
+        help="Switch between the Austin, Texas empirical market and India's vacation rental corridors."
+    )
     st.markdown("---")
 
-    # Room Type Filter
-    all_room_types = sorted(df_all['room_type'].dropna().unique().tolist())
-    selected_room_types = st.multiselect(
-        "Room Type",
-        options=all_room_types,
-        default=all_room_types
-    )
+    if market_territory.startswith("🇺🇸"):
+        st.title("Austin Market Explorer")
+        st.markdown("Filter properties to evaluate live market metrics, spatial distributions, and guest sentiment.")
+        st.markdown("---")
 
-    # Neighbourhood Filter (Top Austin ZIP codes)
-    all_neighbourhoods = sorted(df_all['neighbourhood'].unique().tolist())
-    top_neighbourhoods = [z for z in df_all['neighbourhood'].value_counts().head(12).index.tolist() if z in all_neighbourhoods]
-    selected_neighbourhoods = st.multiselect(
-        "Neighbourhood (ZIP Code)",
-        options=all_neighbourhoods,
-        default=top_neighbourhoods
-    )
+        # Room Type Filter
+        all_room_types = sorted(df_all['room_type'].dropna().unique().tolist())
+        selected_room_types = st.multiselect(
+            "Room Type",
+            options=all_room_types,
+            default=all_room_types
+        )
 
-    # Price Range Filter
-    min_price, max_price = int(df_all['price'].min()), int(df_all['price'].quantile(0.99))
-    price_range = st.slider(
-        "Nightly Price Range ($)",
-        min_value=min_price,
-        max_value=max_price,
-        value=(min_price, 850),
-        step=25
-    )
+        # Neighbourhood Filter (Top Austin ZIP codes)
+        all_neighbourhoods = sorted(df_all['neighbourhood'].unique().tolist())
+        top_neighbourhoods = [z for z in df_all['neighbourhood'].value_counts().head(12).index.tolist() if z in all_neighbourhoods]
+        selected_neighbourhoods = st.multiselect(
+            "Neighbourhood (ZIP Code)",
+            options=all_neighbourhoods,
+            default=top_neighbourhoods
+        )
 
-    # Guest Capacity Filter
-    capacity = st.slider("Guest Capacity (accommodates)", min_value=1, max_value=16, value=(1, 16))
+        # Price Range Filter
+        min_price, max_price = int(df_all['price'].min()), int(df_all['price'].quantile(0.99))
+        price_range = st.slider(
+            "Nightly Price Range ($)",
+            min_value=min_price,
+            max_value=max_price,
+            value=(min_price, 850),
+            step=25
+        )
 
-    # Superhost Filter
-    superhost_option = st.radio(
-        "Host Status",
-        options=["All Hosts", "Superhosts Only", "Regular Hosts Only"],
-        horizontal=True
-    )
+        # Guest Capacity Filter
+        capacity = st.slider("Guest Capacity (accommodates)", min_value=1, max_value=16, value=(1, 16))
 
-    st.markdown("---")
-    st.caption("Inside Airbnb Snapshot: Sept 17, 2026 | Austin, TX")
+        # Superhost Filter
+        superhost_option = st.radio(
+            "Host Status",
+            options=["All Hosts", "Superhosts Only", "Regular Hosts Only"],
+            horizontal=True
+        )
+
+        st.markdown("---")
+        st.caption("Inside Airbnb Snapshot: Sept 17, 2026 | Austin, TX")
+    else:
+        st.title("🇮🇳 India Market Explorer")
+        st.markdown("Filter 2,480 properties across **17 cities and 42 authentic postal PIN / ZIP codes**.")
+        st.markdown("---")
+
+        sidebar_in_cities = list(CITY_CAMERA_COORDINATES.keys())
+        sidebar_selected_city = st.selectbox("🏙️ City / Region Focus", options=sidebar_in_cities, index=0)
+
+        df_in_scope = df_india_all.copy()
+        if not sidebar_selected_city.startswith("All India"):
+            df_in_scope = df_in_scope[df_in_scope['city'] == sidebar_selected_city]
+
+        # Postal PIN Code Filter with Area Name
+        pin_options = sorted(df_in_scope['zipcode'].dropna().astype(str).unique().tolist())
+        pin_to_neigh_map = dict(zip(df_in_scope['zipcode'].astype(str), df_in_scope['neighborhood']))
+        sidebar_selected_pins = st.multiselect(
+            "📮 Postal PIN / ZIP Code",
+            options=pin_options,
+            default=pin_options,
+            format_func=lambda z: f"{z} ({pin_to_neigh_map.get(z, '')})",
+            help="Filter by authentic 6-digit Indian Postal Index Numbers (PIN codes)"
+        )
+
+        # Micro-Market Filter with PIN code visible
+        neigh_options = sorted(df_in_scope['neighborhood'].unique().tolist())
+        neigh_to_pin_map = dict(zip(df_in_scope['neighborhood'], df_in_scope['zipcode'].astype(str)))
+        sidebar_selected_neighs = st.multiselect(
+            "📍 Micro-Market / Area",
+            options=neigh_options,
+            default=neigh_options[:min(4, len(neigh_options))] if len(neigh_options) > 4 else neigh_options,
+            format_func=lambda n: f"{n} (PIN: {neigh_to_pin_map.get(n, '')})"
+        )
+
+        min_in_p, max_in_p = int(df_india_all['price_inr'].min()), int(df_india_all['price_inr'].quantile(0.99))
+        price_range_inr = st.slider(
+            "Nightly Rate Range (₹ INR)",
+            min_value=min_in_p,
+            max_value=max_in_p,
+            value=(min_in_p, 45000),
+            step=500
+        )
+
+        superhost_in_option = st.radio(
+            "Host Status",
+            options=["All Hosts", "Superhosts Only"],
+            horizontal=True
+        )
+
+        st.markdown("---")
+        st.caption("India STR & Vacation Rental Database | 42 PIN Codes")
 
 
 # ---------------------------------------------------------
-# Filtering Logic
+# Filtering Logic & Main Header
 # ---------------------------------------------------------
-df_filtered = df_all.copy()
+if market_territory.startswith("🇺🇸"):
+    df_filtered = df_all.copy()
+    if selected_room_types:
+        df_filtered = df_filtered[df_filtered['room_type'].isin(selected_room_types)]
+    if selected_neighbourhoods:
+        df_filtered = df_filtered[df_filtered['neighbourhood'].astype(str).isin(selected_neighbourhoods)]
+    df_filtered = df_filtered[
+        (df_filtered['price'] >= price_range[0]) &
+        (df_filtered['price'] <= price_range[1]) &
+        (df_filtered['accommodates'] >= capacity[0]) &
+        (df_filtered['accommodates'] <= capacity[1])
+    ]
+    if superhost_option == "Superhosts Only":
+        df_filtered = df_filtered[df_filtered['host_is_superhost'] == 1]
+    elif superhost_option == "Regular Hosts Only":
+        df_filtered = df_filtered[df_filtered['host_is_superhost'] == 0]
 
-if selected_room_types:
-    df_filtered = df_filtered[df_filtered['room_type'].isin(selected_room_types)]
+    st.title("Austin Airbnb Market Intelligence & Pricing Simulator")
+    st.markdown("An executive analytics dashboard evaluating listing drivers, spatial economics, and guest sentiment in Austin, Texas.")
+    if len(df_filtered) == 0:
+        st.warning("⚠️ No listings match the selected filters. Please broaden your sidebar filter criteria.")
+        st.stop()
 
-if selected_neighbourhoods:
-    df_filtered = df_filtered[df_filtered['neighbourhood'].astype(str).isin(selected_neighbourhoods)]
+    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+    with kpi1:
+        st.metric("Active Listings", f"{len(df_filtered):,}", help="Filtered listing count")
+    with kpi2:
+        median_p = df_filtered['price'].median()
+        st.metric("Median Nightly Price", f"${median_p:.0f}", help="Median nightly rate")
+    with kpi3:
+        avg_occ = df_filtered['occupancy_rate_30'].mean() * 100.0
+        st.metric("Forward 30d Occupancy", f"{avg_occ:.1f}%", help="Calendar-booked proxy over next 30 days")
+    with kpi4:
+        avg_rating = df_filtered['review_scores_rating'].dropna().mean()
+        st.metric("Avg Rating Score", f"{avg_rating:.2f} ★", help="Average guest rating (0-5 scale)")
+    with kpi5:
+        avg_sent = df_filtered['sentiment_mean'].dropna().mean()
+        st.metric("Avg Sentiment", f"{avg_sent:.3f}", help="VADER review compound score (-1.0 to +1.0)")
+else:
+    df_in_filtered = df_in_scope.copy()
+    if sidebar_selected_neighs:
+        df_in_filtered = df_in_filtered[df_in_filtered['neighborhood'].isin(sidebar_selected_neighs)]
+    if sidebar_selected_pins:
+        df_in_filtered = df_in_filtered[df_in_filtered['zipcode'].astype(str).isin(sidebar_selected_pins)]
+    df_in_filtered = df_in_filtered[
+        (df_in_filtered['price_inr'] >= price_range_inr[0]) &
+        (df_in_filtered['price_inr'] <= price_range_inr[1])
+    ]
+    if superhost_in_option == "Superhosts Only":
+        df_in_filtered = df_in_filtered[df_in_filtered['host_is_superhost'] == 1]
 
-df_filtered = df_filtered[
-    (df_filtered['price'] >= price_range[0]) &
-    (df_filtered['price'] <= price_range[1]) &
-    (df_filtered['accommodates'] >= capacity[0]) &
-    (df_filtered['accommodates'] <= capacity[1])
-]
+    st.title("🇮🇳 India Vacation Rental & Short-Term Market Intelligence")
+    st.markdown("Comprehensive portfolio analytics, spatial economics, and verified postal PIN codes across 17 premier Indian tourist corridors.")
+    if len(df_in_filtered) == 0:
+        st.warning("⚠️ No Indian listings match the selected filters. Please broaden your selection criteria.")
+        st.stop()
 
-if superhost_option == "Superhosts Only":
-    df_filtered = df_filtered[df_filtered['host_is_superhost'] == 1]
-elif superhost_option == "Regular Hosts Only":
-    df_filtered = df_filtered[df_filtered['host_is_superhost'] == 0]
+    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+    with kpi1:
+        st.metric("Properties Mapped", f"{len(df_in_filtered):,}", help="Filtered listing count")
+    with kpi2:
+        median_p_inr = df_in_filtered['price_inr'].median()
+        st.metric("Median Nightly Rate", f"₹{median_p_inr:,.0f}", help="Median nightly rate in INR")
+    with kpi3:
+        avg_occ_in = df_in_filtered['occupancy_rate_365'].mean() * 100.0
+        st.metric("Annual Occupancy", f"{avg_occ_in:.1f}%", help="Annual occupancy proxy")
+    with kpi4:
+        avg_rating_in = df_in_filtered['review_scores_rating'].dropna().mean()
+        st.metric("Avg Rating Score", f"{avg_rating_in:.2f} ★", help="Average guest rating (0-5 scale)")
+    with kpi5:
+        pwr_pct_in = df_in_filtered['has_inverter_power_backup'].mean() * 100.0
+        st.metric("Power Backup %", f"{pwr_pct_in:.1f}%", help="Properties with dedicated inverter/generator backup")
 
-
-# ---------------------------------------------------------
-# Main App Header & Dynamic KPI Metric Row
-# ---------------------------------------------------------
-st.title("Austin Airbnb Market Intelligence & Pricing Simulator")
-st.markdown("An executive analytics dashboard evaluating listing drivers, spatial economics, and guest sentiment in Austin, Texas.")
-
-if len(df_filtered) == 0:
-    st.warning("⚠️ No listings match the selected filters. Please broaden your sidebar filter criteria.")
-    st.stop()
-
-# Responsive KPI Cards
-kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-
-with kpi1:
-    st.metric("Active Listings", f"{len(df_filtered):,}", help="Filtered listing count")
-
-with kpi2:
-    median_p = df_filtered['price'].median()
-    st.metric("Median Nightly Price", f"${median_p:.0f}", help="Median nightly rate")
-
-with kpi3:
-    avg_occ = df_filtered['occupancy_rate_30'].mean() * 100.0
-    st.metric("Forward 30d Occupancy", f"{avg_occ:.1f}%", help="Calendar-booked proxy over next 30 days")
-
-with kpi4:
-    avg_rating = df_filtered['review_scores_rating'].dropna().mean()
-    st.metric("Avg Rating Score", f"{avg_rating:.2f} ★", help="Average guest rating (0-5 scale)")
-
-with kpi5:
-    avg_sent = df_filtered['sentiment_mean'].dropna().mean()
-    st.metric("Avg Sentiment", f"{avg_sent:.3f}", help="VADER review compound score (-1.0 to +1.0)")
+    # Set default df_filtered for other tabs
+    df_filtered = df_all.copy()
 
 st.markdown("---")
 
@@ -386,7 +473,7 @@ with tab_map:
 
     else:
         # =========================================================
-        # INDIA GEOSPATIAL VACATION RENTAL MAP (25+ CITIES)
+        # INDIA GEOSPATIAL VACATION RENTAL MAP (17 CITIES & 42 PIN CODES)
         # =========================================================
         st.subheader("🇮🇳 India Multi-City Short-Term Rental & Tourism Map")
         st.markdown(
@@ -394,49 +481,65 @@ with tab_map:
             "(Goa, Mumbai, Alibaug, Lonavala, Jaipur, Udaipur, Manali, Shimla, Bengaluru, Coorg, Kerala, Delhi NCR, Rishikesh, Pondicherry, Varanasi)."
         )
 
-        df_india_all = get_indian_listings_df()
-
-        col_in_filter1, col_in_filter2, col_in_filter3, col_in_filter4, col_in_filter5 = st.columns([1.3, 1.2, 1.2, 1.1, 1.0])
-        
-        with col_in_filter1:
+        col_in_city, col_in_curr = st.columns([3, 1])
+        with col_in_city:
+            initial_in_city_idx = 0
+            if 'sidebar_selected_city' in locals() and sidebar_selected_city in CITY_CAMERA_COORDINATES:
+                initial_in_city_idx = list(CITY_CAMERA_COORDINATES.keys()).index(sidebar_selected_city)
             selected_city = st.selectbox(
                 "🏙️ Select City / Region Focus",
                 options=list(CITY_CAMERA_COORDINATES.keys()),
-                index=0
+                index=initial_in_city_idx
             )
-        
+        with col_in_curr:
+            currency_pref = st.radio("Display Currency", options=["INR (₹)", "USD ($)"], horizontal=True)
+
         # Filter by selected city
         df_india = df_india_all.copy()
         if not selected_city.startswith("All India"):
             df_india = df_india[df_india['city'] == selected_city]
 
-        with col_in_filter2:
+        # ---------------------------------------------------------
+        # PROMINENT POSTAL PIN / ZIP CODE DISPLAY BANNER
+        # ---------------------------------------------------------
+        city_pin_df = df_india[['neighborhood', 'zipcode']].drop_duplicates().sort_values(by='neighborhood')
+        if selected_city.startswith("All India"):
+            st.info("📮 **National Postal Coverage**: 42 Verified 6-Digit Indian Postal PIN / ZIP Codes across 17 Vacation Corridors & Metros.")
+        else:
+            pin_items = [f"**{row['neighborhood']}**: `{row['zipcode']}`" for _, row in city_pin_df.iterrows()]
+            st.success(f"📮 **Postal PIN / ZIP Codes for {selected_city}**: " + "  •  ".join(pin_items))
+
+        # Filters Row with PIN codes clearly formatted
+        col_in_filter1, col_in_filter2, col_in_filter3 = st.columns([1.5, 1.5, 1.2])
+        
+        with col_in_filter1:
             avail_neighs = sorted(df_india['neighborhood'].unique().tolist())
+            neigh_to_pin_map = dict(zip(df_india['neighborhood'], df_india['zipcode'].astype(str)))
             selected_neighs = st.multiselect(
-                "📍 Micro-Market / Area",
+                "📍 Micro-Market / Area (with Postal PIN)",
                 options=avail_neighs,
-                default=avail_neighs[:min(4, len(avail_neighs))] if len(avail_neighs) > 4 else avail_neighs
+                default=avail_neighs[:min(4, len(avail_neighs))] if len(avail_neighs) > 4 else avail_neighs,
+                format_func=lambda n: f"{n} (PIN: {neigh_to_pin_map.get(n, '')})"
+            )
+
+        with col_in_filter2:
+            avail_zips = sorted(df_india['zipcode'].dropna().astype(str).unique().tolist())
+            pin_to_neigh_map = dict(zip(df_india['zipcode'].astype(str), df_india['neighborhood']))
+            selected_zips = st.multiselect(
+                "📮 Postal PIN / ZIP Code (with Area)",
+                options=avail_zips,
+                default=avail_zips,
+                format_func=lambda z: f"{z} ({pin_to_neigh_map.get(z, '')})",
+                help="Filter by authentic 6-digit Indian Postal Index Numbers (PIN codes)"
             )
 
         with col_in_filter3:
-            avail_zips = sorted(df_india['zipcode'].dropna().astype(str).unique().tolist())
-            selected_zips = st.multiselect(
-                "📮 Postal PIN / ZIP Code",
-                options=avail_zips,
-                default=avail_zips,
-                help="Filter by authentic 6-digit Indian Postal PIN / ZIP codes"
-            )
-
-        with col_in_filter4:
             room_options = sorted(df_india_all['room_type'].unique().tolist())
             selected_in_rooms = st.multiselect(
                 "🏠 Property / Room Type",
                 options=room_options,
                 default=room_options
             )
-
-        with col_in_filter5:
-            currency_pref = st.radio("Display Currency", options=["INR (₹)", "USD ($)"], horizontal=True)
 
         # Amenity Filters Row
         am_c1, am_c2, am_c3, am_c4, am_c5 = st.columns(5)
@@ -503,6 +606,25 @@ with tab_map:
                 st.write(df_india['price_inr'].describe()[['min', '25%', '50%', '75%', 'max']].rename({
                     'min': 'Min (₹)', '25%': '25% (₹)', '50%': 'Median (₹)', '75%': '75% (₹)', 'max': 'Max (₹)'
                 }))
+
+                # Postal PIN code breakdown table in sidebar
+                st.markdown("---")
+                st.markdown(f"**📮 Postal PIN Codes ({selected_city})**")
+                side_pin_df = df_india.groupby(['zipcode', 'neighborhood']).agg(
+                    count=('id', 'count'),
+                    med_inr=('price_inr', 'median')
+                ).reset_index()
+                side_pin_df['med_inr'] = side_pin_df['med_inr'].apply(lambda x: f"₹{x:,.0f}")
+                st.dataframe(
+                    side_pin_df.rename(columns={
+                        'zipcode': 'PIN Code',
+                        'neighborhood': 'Area',
+                        'count': 'Listings',
+                        'med_inr': 'Median (₹)'
+                    }),
+                    use_container_width=True,
+                    hide_index=True
+                )
 
             with col_map_box:
                 plot_in_df = df_india.copy()
@@ -595,20 +717,21 @@ with tab_map:
                 fig_in_hist.update_layout(showlegend=False, height=380, margin=dict(t=40, b=20, l=20, r=20))
                 st.plotly_chart(fig_in_hist, use_container_width=True)
 
-            # Property Listings Table
-            st.markdown("##### Filtered Properties Table (India)")
+            # Property Listings Table WITH POSTAL PIN / ZIP CODES
+            st.markdown(f"##### 📋 Filtered Properties Directory with Postal PIN / ZIP Codes ({len(df_india):,} Properties)")
             st.dataframe(
-                df_india[['name', 'city', 'neighborhood', 'room_type', 'accommodates', 'bedrooms', 'price_inr', 'price_usd', 'review_scores_rating', 'has_pool', 'has_inverter_power_backup', 'has_caretaker_or_cook']]
+                df_india[['name', 'city', 'neighborhood', 'zipcode', 'room_type', 'accommodates', 'bedrooms', 'price_inr', 'price_usd', 'review_scores_rating', 'has_pool', 'has_inverter_power_backup', 'has_caretaker_or_cook']]
                 .rename(columns={
                     'name': 'Property Name',
                     'city': 'City',
                     'neighborhood': 'Micro-Market',
+                    'zipcode': 'Postal PIN / ZIP Code',
                     'room_type': 'Type',
                     'accommodates': 'Guests',
                     'bedrooms': 'Beds',
                     'price_inr': 'Rate (₹)',
                     'price_usd': 'Rate ($)',
-                    'review_scores_rating': 'Rating',
+                    'review_scores_rating': 'Rating ★',
                     'has_pool': 'Pool',
                     'has_inverter_power_backup': 'Inverter',
                     'has_caretaker_or_cook': 'Cook'
@@ -643,8 +766,10 @@ with tab_market:
 
     with col_m2:
         # 2. Distance to Downtown Decay Curve
+        n_dist_sample = min(1500, len(df_filtered))
+        dist_plot_df = df_filtered.sample(n_dist_sample, random_state=42) if n_dist_sample > 0 else df_filtered
         fig_dist = px.scatter(
-            df_filtered.sample(min(1500, len(df_filtered)), random_state=42),
+            dist_plot_df,
             x='distance_to_downtown_km',
             y='price',
             color='room_type',
@@ -743,8 +868,11 @@ with tab_nlp:
 
     with col_n2:
         # Breaking the Rating Ceiling Effect
+        df_valid_sent = df_filtered.dropna(subset=['review_scores_rating', 'sentiment_mean'])
+        n_sent_sample = min(1200, len(df_valid_sent))
+        sent_plot_df = df_valid_sent.sample(n_sent_sample, random_state=42) if n_sent_sample > 0 else df_valid_sent
         fig_ceil = px.scatter(
-            df_filtered.dropna(subset=['review_scores_rating', 'sentiment_mean']).sample(min(1200, len(df_filtered)), random_state=42),
+            sent_plot_df,
             x='review_scores_rating',
             y='sentiment_mean',
             trendline='lowess',
@@ -1063,6 +1191,12 @@ with tab_india:
     with sim_c1:
         selected_hub_name = st.selectbox("Select Target Indian Hub", options=hubs_df['hub'].tolist(), index=0)
         selected_hub = hubs_df[hubs_df['hub'] == selected_hub_name].iloc[0]
+
+        # Display PIN codes for the selected investment hub
+        hub_city = selected_hub['city']
+        hub_pins = df_india_all[df_india_all['city'] == hub_city][['neighborhood', 'zipcode']].drop_duplicates()
+        hub_pin_str = " • ".join([f"**{r['zipcode']}** ({r['neighborhood']})" for _, r in hub_pins.iterrows()])
+        st.info(f"📮 **Postal PIN Codes in {hub_city}**: {hub_pin_str}")
 
         property_cost = st.slider("Total Capital Investment (₹ in Lakhs)", min_value=25.0, max_value=350.0, value=85.0, step=5.0, help="Purchase price + interior fit-out/renovation in Lakhs")
         default_rate = float(selected_hub['avg_price_inr'])
