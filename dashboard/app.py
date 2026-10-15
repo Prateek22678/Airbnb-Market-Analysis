@@ -27,6 +27,11 @@ from src.features import (
     AUSTIN_DOWNTOWN_LAT,
     AUSTIN_DOWNTOWN_LON
 )
+from src.india_market import (
+    get_indian_hubs_df,
+    generate_indian_synthetic_listings,
+    calculate_india_investment_roi
+)
 
 # ---------------------------------------------------------
 # Page Configuration & Visual Theme
@@ -262,12 +267,13 @@ st.markdown("---")
 # ---------------------------------------------------------
 # Tabbed Navigation
 # ---------------------------------------------------------
-tab_map, tab_market, tab_nlp, tab_ml, tab_recommendations = st.tabs([
+tab_map, tab_market, tab_nlp, tab_ml, tab_recommendations, tab_india = st.tabs([
     "🗺️ Geospatial & Price Map",
     "📊 Market Drivers & Seasonality",
     "🧠 Review NLP & Sentiment",
     "🏷️ Dynamic Price Predictor (ML)",
-    "💡 Strategic Recommendations"
+    "💡 Strategic Recommendations",
+    "🇮🇳 India Market Intelligence"
 ])
 
 
@@ -275,92 +281,269 @@ tab_map, tab_market, tab_nlp, tab_ml, tab_recommendations = st.tabs([
 # TAB 1: GEOSPATIAL MAP & PRICE EXPLORER
 # =========================================================
 with tab_map:
-    st.subheader("Geospatial Listing Distribution & Nightly Rates")
-    st.markdown("Interactive 3D map of Austin short-term rentals. Downtown Austin center indicated at Congress Ave & Cesar Chavez.")
-
-    col_map_left, col_map_right = st.columns([3, 1])
-
-    with col_map_right:
-        color_by = st.selectbox(
-            "Color Map Points By",
-            options=["Price Tier", "Superhost Status", "Review Rating", "Sentiment Score"]
-        )
-        map_style = st.selectbox(
-            "Base Map Style",
-            options=["Light", "Dark", "Road"],
-            index=0
-        )
-        st.markdown(f"**Showing {len(df_filtered):,} listings.**")
-        
-        # Price percentile summary in sidebar column
-        st.markdown("##### Selected Price Distribution")
-        st.write(df_filtered['price'].describe()[['min', '25%', '50%', '75%', 'max']])
-
-    with col_map_left:
-        # Assign colors for Pydeck
-        map_df = df_filtered[['latitude', 'longitude', 'name', 'price', 'room_type',
-                              'host_is_superhost', 'review_scores_rating', 'sentiment_mean', 'neighbourhood']].copy()
-        
-        # Color mapping logic
-        if color_by == "Superhost Status":
-            map_df['r'] = np.where(map_df['host_is_superhost'] == 1, 0, 255)
-            map_df['g'] = np.where(map_df['host_is_superhost'] == 1, 53, 90)
-            map_df['b'] = np.where(map_df['host_is_superhost'] == 1, 128, 95)
-        elif color_by == "Review Rating":
-            map_df['r'] = np.where(map_df['review_scores_rating'] >= 4.90, 0, 255)
-            map_df['g'] = np.where(map_df['review_scores_rating'] >= 4.90, 166, 120)
-            map_df['b'] = np.where(map_df['review_scores_rating'] >= 4.90, 153, 50)
-        else: # Default: Price Tier
-            map_df['r'] = np.clip((map_df['price'] / 400.0) * 255, 40, 255).astype(int)
-            map_df['g'] = np.clip(180 - (map_df['price'] / 400.0) * 120, 20, 180).astype(int)
-            map_df['b'] = 90
-
-        map_df['tooltip_text'] = (
-            map_df['name'].str[:35] + "<br>" +
-            "Price: $" + map_df['price'].astype(str) + "/night<br>" +
-            "Room: " + map_df['room_type'] + "<br>" +
-            "Rating: " + map_df['review_scores_rating'].round(2).astype(str) + " ★<br>" +
-            "ZIP: " + map_df['neighbourhood'].astype(str)
-        )
-
-        layer = pdk.Layer(
-            "ScatterplotLayer",
-            data=map_df,
-            get_position=["longitude", "latitude"],
-            get_radius=120,
-            get_fill_color=["r", "g", "b", 190],
-            pickable=True,
-            auto_highlight=True
-        )
-
-        view_state = pdk.ViewState(
-            latitude=AUSTIN_DOWNTOWN_LAT,
-            longitude=AUSTIN_DOWNTOWN_LON,
-            zoom=10.8,
-            pitch=30
-        )
-
-        st.pydeck_chart(
-            pdk.Deck(
-                layers=[layer],
-                initial_view_state=view_state,
-                tooltip={"html": "{tooltip_text}", "style": {"color": "white", "backgroundColor": "#222222"}}
-            )
-        )
-
-    # Sub-row: Price distribution histogram
-    st.markdown("##### Filtered Nightly Price Distribution")
-    fig_hist = px.histogram(
-        df_filtered,
-        x='price',
-        nbins=45,
-        color_discrete_sequence=['#FF5A5F'],
-        marginal='box',
-        labels={'price': 'Nightly Price (USD)'},
-        title=f"Price Distribution for Filtered Selection (N={len(df_filtered):,})"
+    # Market Geography Selector
+    map_region = st.radio(
+        "📍 Select Map Geography:",
+        options=[
+            "🇺🇸 Austin, Texas (Empirical Study - 9,945 Listings)",
+            "🇮🇳 India - Premier Vacation Rental & Tourism Hubs"
+        ],
+        horizontal=True,
+        help="Switch between the Austin, TX detailed listing map and India's top tourism/vacation rental corridors."
     )
-    fig_hist.update_layout(showlegend=False, height=350, margin=dict(t=40, b=20, l=20, r=20))
-    st.plotly_chart(fig_hist, use_container_width=True)
+
+    if map_region.startswith("🇺🇸"):
+        st.subheader("Geospatial Listing Distribution & Nightly Rates (Austin, TX)")
+        st.markdown("Interactive 3D map of Austin short-term rentals. Downtown Austin center indicated at Congress Ave & Cesar Chavez.")
+
+        col_map_left, col_map_right = st.columns([3, 1])
+
+        with col_map_right:
+            color_by = st.selectbox(
+                "Color Map Points By",
+                options=["Price Tier", "Superhost Status", "Review Rating", "Sentiment Score"]
+            )
+            map_style = st.selectbox(
+                "Base Map Style",
+                options=["Light", "Dark", "Road"],
+                index=0
+            )
+            st.markdown(f"**Showing {len(df_filtered):,} listings.**")
+            
+            # Price percentile summary in sidebar column
+            st.markdown("##### Selected Price Distribution")
+            st.write(df_filtered['price'].describe()[['min', '25%', '50%', '75%', 'max']])
+
+        with col_map_left:
+            # Assign colors for Pydeck
+            map_df = df_filtered[['latitude', 'longitude', 'name', 'price', 'room_type',
+                                  'host_is_superhost', 'review_scores_rating', 'sentiment_mean', 'neighbourhood']].copy()
+            
+            # Color mapping logic
+            if color_by == "Superhost Status":
+                map_df['r'] = np.where(map_df['host_is_superhost'] == 1, 0, 255)
+                map_df['g'] = np.where(map_df['host_is_superhost'] == 1, 53, 90)
+                map_df['b'] = np.where(map_df['host_is_superhost'] == 1, 128, 95)
+            elif color_by == "Review Rating":
+                map_df['r'] = np.where(map_df['review_scores_rating'] >= 4.90, 0, 255)
+                map_df['g'] = np.where(map_df['review_scores_rating'] >= 4.90, 166, 120)
+                map_df['b'] = np.where(map_df['review_scores_rating'] >= 4.90, 153, 50)
+            else: # Default: Price Tier
+                map_df['r'] = np.clip((map_df['price'] / 400.0) * 255, 40, 255).astype(int)
+                map_df['g'] = np.clip(180 - (map_df['price'] / 400.0) * 120, 20, 180).astype(int)
+                map_df['b'] = 90
+
+            map_df['tooltip_text'] = (
+                map_df['name'].str[:35] + "<br>" +
+                "Price: $" + map_df['price'].astype(str) + "/night<br>" +
+                "Room: " + map_df['room_type'] + "<br>" +
+                "Rating: " + map_df['review_scores_rating'].round(2).astype(str) + " ★<br>" +
+                "ZIP: " + map_df['neighbourhood'].astype(str)
+            )
+
+            layer = pdk.Layer(
+                "ScatterplotLayer",
+                data=map_df,
+                get_position=["longitude", "latitude"],
+                get_radius=120,
+                get_fill_color=["r", "g", "b", 190],
+                pickable=True,
+                auto_highlight=True
+            )
+
+            view_state = pdk.ViewState(
+                latitude=AUSTIN_DOWNTOWN_LAT,
+                longitude=AUSTIN_DOWNTOWN_LON,
+                zoom=10.8,
+                pitch=30
+            )
+
+            st.pydeck_chart(
+                pdk.Deck(
+                    layers=[layer],
+                    initial_view_state=view_state,
+                    tooltip={"html": "{tooltip_text}", "style": {"color": "white", "backgroundColor": "#222222"}}
+                )
+            )
+
+        # Sub-row: Price distribution histogram
+        st.markdown("##### Filtered Nightly Price Distribution")
+        fig_hist = px.histogram(
+            df_filtered,
+            x='price',
+            nbins=45,
+            color_discrete_sequence=['#FF5A5F'],
+            marginal='box',
+            labels={'price': 'Nightly Price (USD)'},
+            title=f"Price Distribution for Filtered Selection (N={len(df_filtered):,})"
+        )
+        fig_hist.update_layout(showlegend=False, height=350, margin=dict(t=40, b=20, l=20, r=20))
+        st.plotly_chart(fig_hist, use_container_width=True)
+
+    else:
+        # =========================================================
+        # INDIA GEOSPATIAL VACATION RENTAL MAP
+        # =========================================================
+        st.subheader("🇮🇳 India Premier Vacation Rental & Tourism Geography")
+        st.markdown(
+            "Interactive 3D geospatial visualization of India's leading short-term rental and homestay corridors "
+            "across **Goa, Rajasthan, Himachal Pradesh, Maharashtra, Karnataka, Kerala, Uttarakhand, and Puducherry**."
+        )
+
+        hubs_df = get_indian_hubs_df()
+        synth_listings = generate_indian_synthetic_listings()
+
+        col_in_left, col_in_right = st.columns([3, 1])
+
+        with col_in_right:
+            selected_cat = st.selectbox(
+                "Filter Destination Category",
+                options=["All Categories"] + sorted(hubs_df['category'].unique().tolist())
+            )
+            color_metric = st.selectbox(
+                "Color 3D Columns By",
+                options=["Average Daily Rate (INR ₹)", "Estimated Occupancy (%)", "Investment Yield Tier"]
+            )
+            currency_display = st.radio("Display Currency", options=["INR (₹)", "USD ($)"], horizontal=True)
+
+            filtered_hubs = hubs_df.copy()
+            if selected_cat != "All Categories":
+                filtered_hubs = filtered_hubs[filtered_hubs['category'] == selected_cat]
+
+            st.markdown(f"**Showing {len(filtered_hubs)} Premier Tourism Hubs.**")
+
+            st.markdown("##### India Market Snapshot")
+            avg_adr = filtered_hubs['avg_price_inr'].mean()
+            avg_occ = filtered_hubs['occupancy_rate'].mean() * 100.0
+            if currency_display.startswith("INR"):
+                st.metric("Avg Daily Rate (ADR)", f"₹{avg_adr:,.0f}")
+            else:
+                st.metric("Avg Daily Rate (ADR)", f"${avg_adr/83.0:.0f}")
+            st.metric("Avg Peak Occupancy", f"{avg_occ:.1f}%")
+            st.metric("Top Yield Market", "North Goa Villas")
+
+        with col_in_left:
+            plot_hubs = filtered_hubs.copy()
+            
+            if color_metric == "Estimated Occupancy (%)":
+                plot_hubs['r'] = np.clip((plot_hubs['occupancy_rate'] - 0.65) * 1200, 40, 255).astype(int)
+                plot_hubs['g'] = 160
+                plot_hubs['b'] = 80
+            elif color_metric == "Investment Yield Tier":
+                plot_hubs['r'] = np.where(plot_hubs['roi_tier'].str.contains("Tier 1"), 0, 255)
+                plot_hubs['g'] = np.where(plot_hubs['roi_tier'].str.contains("Tier 1"), 166, 120)
+                plot_hubs['b'] = np.where(plot_hubs['roi_tier'].str.contains("Tier 1"), 153, 50)
+            else: # Default: ADR
+                plot_hubs['r'] = np.clip((plot_hubs['avg_price_inr'] / 12000.0) * 255, 60, 255).astype(int)
+                plot_hubs['g'] = np.clip(200 - (plot_hubs['avg_price_inr'] / 12000.0) * 160, 30, 200).astype(int)
+                plot_hubs['b'] = 90
+
+            plot_hubs['elevation'] = plot_hubs['avg_price_inr'] * 12.0
+
+            plot_hubs['tooltip_text'] = (
+                "<b>" + plot_hubs['hub'] + "</b><br>" +
+                "State: " + plot_hubs['state'] + " (" + plot_hubs['region'] + ")<br>" +
+                "Category: " + plot_hubs['category'] + "<br>" +
+                "Avg Rate: ₹" + plot_hubs['avg_price_inr'].apply(lambda x: f"{x:,}") + " / night ($" + plot_hubs['avg_price_usd'].astype(str) + ")<br>" +
+                "Est. Occupancy: " + (plot_hubs['occupancy_rate'] * 100).round(1).astype(str) + "%<br>" +
+                "Peak Season: " + plot_hubs['peak_season'] + "<br>" +
+                "Top Amenity: " + plot_hubs['top_amenity'] + "<br>" +
+                "Est. Gross Annual: ₹" + plot_hubs['annual_rev_lakhs'].astype(str) + " Lakhs"
+            )
+
+            column_layer = pdk.Layer(
+                "ColumnLayer",
+                data=plot_hubs,
+                get_position=["longitude", "latitude"],
+                get_elevation="elevation",
+                elevation_scale=1,
+                radius=34000,
+                get_fill_color=["r", "g", "b", 210],
+                pickable=True,
+                auto_highlight=True
+            )
+
+            scatter_synth = synth_listings[synth_listings['category'].isin(filtered_hubs['category'])].copy()
+            scatter_synth['tooltip_text'] = (
+                "<b>" + scatter_synth['name'] + "</b><br>" +
+                "Hub: " + scatter_synth['hub'] + "<br>" +
+                "Price: ₹" + scatter_synth['price_inr'].apply(lambda x: f"{x:,}") + " / night ($" + scatter_synth['price_usd'].astype(str) + ")<br>" +
+                "Room: " + scatter_synth['room_type'] + "<br>" +
+                "Capacity: " + scatter_synth['accommodates'].astype(str) + " Guests<br>" +
+                "Rating: " + scatter_synth['review_scores_rating'].astype(str) + " ★"
+            )
+
+            scatter_layer = pdk.Layer(
+                "ScatterplotLayer",
+                data=scatter_synth,
+                get_position=["longitude", "latitude"],
+                get_radius=9000,
+                get_fill_color=[255, 90, 95, 180],
+                pickable=True,
+                auto_highlight=True
+            )
+
+            india_view_state = pdk.ViewState(
+                latitude=21.5,
+                longitude=79.0,
+                zoom=4.2,
+                pitch=35
+            )
+
+            st.pydeck_chart(
+                pdk.Deck(
+                    layers=[column_layer, scatter_layer],
+                    initial_view_state=india_view_state,
+                    tooltip={"html": "{tooltip_text}", "style": {"color": "white", "backgroundColor": "#222222", "fontSize": "12px"}}
+                )
+            )
+
+        st.markdown("##### India Vacation Rental Economics & ADR Benchmark")
+        col_in_c1, col_in_c2 = st.columns(2)
+
+        with col_in_c1:
+            fig_in_bar = px.bar(
+                filtered_hubs.sort_values(by='avg_price_inr', ascending=True),
+                x='avg_price_inr' if currency_display.startswith("INR") else 'avg_price_usd',
+                y='hub',
+                orientation='h',
+                color='category',
+                labels={'avg_price_inr': 'Average Nightly Rate (INR ₹)', 'avg_price_usd': 'Nightly Rate (USD $)', 'hub': 'Rental Corridor'},
+                title="Average Daily Rate (ADR) Across Indian Vacation Rental Hubs"
+            )
+            fig_in_bar.update_layout(height=420, margin=dict(t=40, b=20, l=20, r=20))
+            st.plotly_chart(fig_in_bar, use_container_width=True)
+
+        with col_in_c2:
+            fig_in_occ = px.bar(
+                filtered_hubs.sort_values(by='occupancy_rate', ascending=True),
+                x='occupancy_rate',
+                y='hub',
+                orientation='h',
+                color='roi_tier',
+                labels={'occupancy_rate': 'Estimated Occupancy Rate (%)', 'hub': 'Rental Corridor'},
+                title="Estimated Annual Occupancy Rate Across Destinations"
+            )
+            fig_in_occ.update_layout(height=420, margin=dict(t=40, b=20, l=20, r=20), xaxis_tickformat='.0%')
+            st.plotly_chart(fig_in_occ, use_container_width=True)
+
+        st.markdown("##### Comprehensive Market Benchmark Table")
+        st.dataframe(
+            filtered_hubs[['hub', 'state', 'category', 'avg_price_inr', 'avg_price_usd', 'occupancy_rate', 'top_amenity', 'roi_tier', 'annual_rev_lakhs']]
+            .rename(columns={
+                'hub': 'Destination Hub',
+                'state': 'State',
+                'category': 'Segment',
+                'avg_price_inr': 'Avg ADR (₹)',
+                'avg_price_usd': 'Avg ADR ($)',
+                'occupancy_rate': 'Occupancy',
+                'top_amenity': 'Key Value Driver',
+                'roi_tier': 'Yield Tier',
+                'annual_rev_lakhs': 'Est. Gross (Lakhs ₹)'
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
 
 
 # =========================================================
@@ -697,5 +880,107 @@ with tab_recommendations:
     - **Capitalize on March & October**: Calendar occupancy and review arrival volumes peak intensely during **March (SXSW)** and **October (Austin City Limits & Formula 1)**. Hosts should apply minimum night restrictions (3–4 nights) and implement surge pricing tiers up to 60% above summer baseline.
     """)
 
+
+# =========================================================
+# TAB 6: INDIA MARKET INTELLIGENCE & FEASIBILITY SIMULATOR
+# =========================================================
+with tab_india:
+    st.subheader("🇮🇳 India Vacation Rental Intelligence & Investment Feasibility")
+    st.markdown(
+        "A strategic overview of India's rapidly growing vacation rental and homestay sector, "
+        "contrasting domestic demand dynamics with Western market benchmarks and featuring an interactive ROI yield calculator."
+    )
+
+    hubs_df = get_indian_hubs_df()
+
+    # Section 1: Macro Archetypes
+    st.markdown("### 1. The Four Indian Vacation Rental Archetypes")
+    arc1, arc2, arc3, arc4 = st.columns(4)
+    with arc1:
+        st.markdown("""
+        **🏖️ Coastal & Beachfront**
+        - **Core Markets**: North & South Goa, Alibaug, Pondicherry
+        - **ADR**: ₹7,500 – ₹18,000+
+        - **Key Driver**: Private plunge pool, beach proximity, group party villa layout.
+        - **Peak**: Nov – Feb (Sunburn, New Year).
+        """)
+    with arc2:
+        st.markdown("""
+        **🏰 Royal & Heritage**
+        - **Core Markets**: Udaipur, Jaipur, Jodhpur
+        - **ADR**: ₹6,000 – ₹15,000+
+        - **Key Driver**: Lake views, restored courtyards (Mewari havelis), destination weddings.
+        - **Peak**: Oct – Mar (Winter festivals).
+        """)
+    with arc3:
+        st.markdown("""
+        **⛰️ Himalayan Escapes**
+        - **Core Markets**: Manali, Shimla, Kasauli, Dharamshala
+        - **ADR**: ₹4,500 – ₹12,000
+        - **Key Driver**: Mountain view balconies, stone fireplaces, apple orchard surroundings.
+        - **Peak**: Dual season (Dec-Jan Snow, May-Jun Summer).
+        """)
+    with arc4:
+        st.markdown("""
+        **💼 Urban & Tech Extended Stays**
+        - **Core Markets**: Mumbai (Bandra), Bengaluru (Indiranagar)
+        - **ADR**: ₹5,000 – ₹12,000
+        - **Key Driver**: 300 Mbps Wi-Fi, power inverter backup, ergonomic work desks.
+        - **Peak**: High steady year-round occupancy (>80%).
+        """)
+
+    st.markdown("---")
+
+    # Section 2: Interactive Investment Feasibility Calculator
+    st.markdown("### 2. Interactive Investment Yield & Payback Simulator (INR ₹ Lakhs)")
+    st.markdown("Evaluate financial viability, gross rental yields, and capital payback periods for vacation rental acquisitions in India.")
+
+    sim_c1, sim_c2 = st.columns([1, 1])
+
+    with sim_c1:
+        selected_hub_name = st.selectbox("Select Target Indian Hub", options=hubs_df['hub'].tolist(), index=0)
+        selected_hub = hubs_df[hubs_df['hub'] == selected_hub_name].iloc[0]
+
+        property_cost = st.slider("Total Capital Investment (₹ in Lakhs)", min_value=25.0, max_value=350.0, value=85.0, step=5.0, help="Purchase price + interior fit-out/renovation in Lakhs")
+        default_rate = float(selected_hub['avg_price_inr'])
+        nightly_rate = st.slider("Target Nightly Rate (INR ₹)", min_value=2000.0, max_value=30000.0, value=default_rate, step=250.0)
+        default_occ = float(selected_hub['occupancy_rate'] * 100.0)
+        target_occ = st.slider("Expected Annual Occupancy Rate (%)", min_value=35.0, max_value=95.0, value=default_occ, step=1.0)
+        opex_pct = st.slider("Operating Expenses (% of Gross Revenue)", min_value=15.0, max_value=40.0, value=25.0, help="Covers OTA commission (15%), housekeeping, utilities, and maintenance")
+
+    with sim_c2:
+        res = calculate_india_investment_roi(property_cost, nightly_rate, target_occ, opex_pct)
+        st.markdown("#### Projected Financial Returns")
+        
+        m_r1, m_r2 = st.columns(2)
+        m_r1.metric("Est. Annual Booked Nights", f"{res['booked_nights_per_year']} Nights")
+        m_r2.metric("Gross Annual Revenue", f"₹{res['gross_annual_rev_lakhs']:.2f} Lakhs")
+
+        m_r3, m_r4 = st.columns(2)
+        m_r3.metric("Net Operating Income (NOI)", f"₹{res['net_annual_income_lakhs']:.2f} Lakhs")
+        m_r4.metric("Capital Payback Period", f"{res['payback_years']:.1f} Years" if res['payback_years'] < 50 else "> 50 Years")
+
+        y_r1, y_r2 = st.columns(2)
+        y_r1.metric("Gross Rental Yield", f"{res['gross_yield_pct']:.1f}%", delta="vs. 2.5% Long-term Rental")
+        y_r2.metric("Net Rental Yield", f"{res['net_yield_pct']:.1f}%")
+
+        if res['gross_yield_pct'] >= 12.0:
+            st.success("🌟 **Strong Commercial Feasibility**: Projected gross yield exceeds 12%, significantly outperforming standard Indian residential real estate (2.5% - 3.2%).")
+        elif res['gross_yield_pct'] >= 8.0:
+            st.info("👍 **Moderate Commercial Feasibility**: Healthy yield matching commercial real estate benchmarks with sustained capital appreciation potential.")
+        else:
+            st.warning("⚠️ **Low Yield Warning**: High acquisition capital or low nightly rates extend payback period beyond 12 years. Consider optimizing occupancy or adding high-value amenities (private pool, AC).")
+
+    st.markdown("---")
+
+    # Section 3: Unique Operational Nuances in India
+    st.markdown("### 3. Critical Operational Differences: India vs. Western STR Markets")
+    st.markdown("""
+    - **1. The Power Inverter / Generator Mandate**: In India (especially Goa, Himachal, and Uttarakhand), unexpected grid power disruptions during monsoons or peak summers are common. Units without 100% inverter power backup experience catastrophic 1-star review drops.
+    - **2. The Private Pool Premium**: Just as in Austin, TX, a private swimming pool is the single highest price power multiplier in Goa, Alibaug, and Udaipur, driving up to **+45% higher ADR** over comparable dry villas.
+    - **3. Staffing & Caretaker Expectations**: Domestic travelers in India place an extremely high premium on on-site caretakers, breakfast preparation, and local assistance—a service dimension rarely observed in self-check-in Western markets.
+    - **4. Extended Stay 'Workation' Demand**: Post-2020, destinations like Goa, Dharamshala, and Bengaluru generate a massive proportion of 14–30 day bookings requiring reliable 100+ Mbps fiber internet and dedicated desk setups.
+    """)
+
 st.markdown("---")
-st.caption("Austin Airbnb Market Analysis | Data Analyst Portfolio Project | September 2026")
+st.caption("Austin & India Airbnb Market Intelligence | Data Analyst Portfolio Project | September 2026")
