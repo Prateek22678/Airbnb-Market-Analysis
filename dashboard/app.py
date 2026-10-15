@@ -28,8 +28,10 @@ from src.features import (
     AUSTIN_DOWNTOWN_LON
 )
 from src.india_market import (
+    get_indian_listings_df,
+    get_indian_city_summary,
     get_indian_hubs_df,
-    generate_indian_synthetic_listings,
+    CITY_CAMERA_COORDINATES,
     calculate_india_investment_roi
 )
 
@@ -382,168 +384,224 @@ with tab_map:
 
     else:
         # =========================================================
-        # INDIA GEOSPATIAL VACATION RENTAL MAP
+        # INDIA GEOSPATIAL VACATION RENTAL MAP (25+ CITIES)
         # =========================================================
-        st.subheader("🇮🇳 India Premier Vacation Rental & Tourism Geography")
+        st.subheader("🇮🇳 India Multi-City Short-Term Rental & Tourism Map")
         st.markdown(
-            "Interactive 3D geospatial visualization of India's leading short-term rental and homestay corridors "
-            "across **Goa, Rajasthan, Himachal Pradesh, Maharashtra, Karnataka, Kerala, Uttarakhand, and Puducherry**."
+            "Interactive 3D geospatial intelligence across **2,480 properties in 17 premier Indian cities and vacation corridors** "
+            "(Goa, Mumbai, Alibaug, Lonavala, Jaipur, Udaipur, Manali, Shimla, Bengaluru, Coorg, Kerala, Delhi NCR, Rishikesh, Pondicherry, Varanasi)."
         )
 
-        hubs_df = get_indian_hubs_df()
-        synth_listings = generate_indian_synthetic_listings()
+        df_india_all = get_indian_listings_df()
 
-        col_in_left, col_in_right = st.columns([3, 1])
-
-        with col_in_right:
-            selected_cat = st.selectbox(
-                "Filter Destination Category",
-                options=["All Categories"] + sorted(hubs_df['category'].unique().tolist())
+        col_in_filter1, col_in_filter2, col_in_filter3, col_in_filter4 = st.columns([1.5, 1.2, 1.2, 1.1])
+        
+        with col_in_filter1:
+            selected_city = st.selectbox(
+                "🏙️ Select City / Region Focus",
+                options=list(CITY_CAMERA_COORDINATES.keys()),
+                index=0
             )
-            color_metric = st.selectbox(
-                "Color 3D Columns By",
-                options=["Average Daily Rate (INR ₹)", "Estimated Occupancy (%)", "Investment Yield Tier"]
-            )
-            currency_display = st.radio("Display Currency", options=["INR (₹)", "USD ($)"], horizontal=True)
+        
+        # Filter by selected city
+        df_india = df_india_all.copy()
+        if not selected_city.startswith("All India"):
+            df_india = df_india[df_india['city'] == selected_city]
 
-            filtered_hubs = hubs_df.copy()
-            if selected_cat != "All Categories":
-                filtered_hubs = filtered_hubs[filtered_hubs['category'] == selected_cat]
-
-            st.markdown(f"**Showing {len(filtered_hubs)} Premier Tourism Hubs.**")
-
-            st.markdown("##### India Market Snapshot")
-            avg_adr = filtered_hubs['avg_price_inr'].mean()
-            avg_occ = filtered_hubs['occupancy_rate'].mean() * 100.0
-            if currency_display.startswith("INR"):
-                st.metric("Avg Daily Rate (ADR)", f"₹{avg_adr:,.0f}")
-            else:
-                st.metric("Avg Daily Rate (ADR)", f"${avg_adr/83.0:.0f}")
-            st.metric("Avg Peak Occupancy", f"{avg_occ:.1f}%")
-            st.metric("Top Yield Market", "North Goa Villas")
-
-        with col_in_left:
-            plot_hubs = filtered_hubs.copy()
-            
-            if color_metric == "Estimated Occupancy (%)":
-                plot_hubs['r'] = np.clip((plot_hubs['occupancy_rate'] - 0.65) * 1200, 40, 255).astype(int)
-                plot_hubs['g'] = 160
-                plot_hubs['b'] = 80
-            elif color_metric == "Investment Yield Tier":
-                plot_hubs['r'] = np.where(plot_hubs['roi_tier'].str.contains("Tier 1"), 0, 255)
-                plot_hubs['g'] = np.where(plot_hubs['roi_tier'].str.contains("Tier 1"), 166, 120)
-                plot_hubs['b'] = np.where(plot_hubs['roi_tier'].str.contains("Tier 1"), 153, 50)
-            else: # Default: ADR
-                plot_hubs['r'] = np.clip((plot_hubs['avg_price_inr'] / 12000.0) * 255, 60, 255).astype(int)
-                plot_hubs['g'] = np.clip(200 - (plot_hubs['avg_price_inr'] / 12000.0) * 160, 30, 200).astype(int)
-                plot_hubs['b'] = 90
-
-            plot_hubs['elevation'] = plot_hubs['avg_price_inr'] * 12.0
-
-            plot_hubs['tooltip_text'] = (
-                "<b>" + plot_hubs['hub'] + "</b><br>" +
-                "State: " + plot_hubs['state'] + " (" + plot_hubs['region'] + ")<br>" +
-                "Category: " + plot_hubs['category'] + "<br>" +
-                "Avg Rate: ₹" + plot_hubs['avg_price_inr'].apply(lambda x: f"{x:,}") + " / night ($" + plot_hubs['avg_price_usd'].astype(str) + ")<br>" +
-                "Est. Occupancy: " + (plot_hubs['occupancy_rate'] * 100).round(1).astype(str) + "%<br>" +
-                "Peak Season: " + plot_hubs['peak_season'] + "<br>" +
-                "Top Amenity: " + plot_hubs['top_amenity'] + "<br>" +
-                "Est. Gross Annual: ₹" + plot_hubs['annual_rev_lakhs'].astype(str) + " Lakhs"
+        with col_in_filter2:
+            avail_neighs = sorted(df_india['neighborhood'].unique().tolist())
+            selected_neighs = st.multiselect(
+                "📍 Micro-Market / Neighborhood",
+                options=avail_neighs,
+                default=avail_neighs[:min(4, len(avail_neighs))] if len(avail_neighs) > 4 else avail_neighs
             )
 
-            column_layer = pdk.Layer(
-                "ColumnLayer",
-                data=plot_hubs,
-                get_position=["longitude", "latitude"],
-                get_elevation="elevation",
-                elevation_scale=1,
-                radius=34000,
-                get_fill_color=["r", "g", "b", 210],
-                pickable=True,
-                auto_highlight=True
+        with col_in_filter3:
+            room_options = sorted(df_india_all['room_type'].unique().tolist())
+            selected_in_rooms = st.multiselect(
+                "🏠 Property / Room Type",
+                options=room_options,
+                default=room_options
             )
 
-            scatter_synth = synth_listings[synth_listings['category'].isin(filtered_hubs['category'])].copy()
-            scatter_synth['tooltip_text'] = (
-                "<b>" + scatter_synth['name'] + "</b><br>" +
-                "Hub: " + scatter_synth['hub'] + "<br>" +
-                "Price: ₹" + scatter_synth['price_inr'].apply(lambda x: f"{x:,}") + " / night ($" + scatter_synth['price_usd'].astype(str) + ")<br>" +
-                "Room: " + scatter_synth['room_type'] + "<br>" +
-                "Capacity: " + scatter_synth['accommodates'].astype(str) + " Guests<br>" +
-                "Rating: " + scatter_synth['review_scores_rating'].astype(str) + " ★"
-            )
+        with col_in_filter4:
+            currency_pref = st.radio("Display Currency", options=["INR (₹)", "USD ($)"], horizontal=True)
 
-            scatter_layer = pdk.Layer(
-                "ScatterplotLayer",
-                data=scatter_synth,
-                get_position=["longitude", "latitude"],
-                get_radius=9000,
-                get_fill_color=[255, 90, 95, 180],
-                pickable=True,
-                auto_highlight=True
-            )
+        # Amenity Filters Row
+        am_c1, am_c2, am_c3, am_c4, am_c5 = st.columns(5)
+        with am_c1:
+            req_pool = st.checkbox("🏊 Private Pool Only")
+        with am_c2:
+            req_inverter = st.checkbox("⚡ Power Backup Only")
+        with am_c3:
+            req_ac = st.checkbox("❄️ Air Conditioned Only")
+        with am_c4:
+            req_cook = st.checkbox("👨‍🍳 Cook / Caretaker Only")
+        with am_c5:
+            req_superhost = st.checkbox("⭐ Superhost Only")
 
-            india_view_state = pdk.ViewState(
-                latitude=21.5,
-                longitude=79.0,
-                zoom=4.2,
-                pitch=35
-            )
+        # Apply Filters
+        if selected_neighs:
+            df_india = df_india[df_india['neighborhood'].isin(selected_neighs)]
+        if selected_in_rooms:
+            df_india = df_india[df_india['room_type'].isin(selected_in_rooms)]
+        if req_pool:
+            df_india = df_india[df_india['has_pool'] == 1]
+        if req_inverter:
+            df_india = df_india[df_india['has_inverter_power_backup'] == 1]
+        if req_ac:
+            df_india = df_india[df_india['has_air_conditioning'] == 1]
+        if req_cook:
+            df_india = df_india[df_india['has_caretaker_or_cook'] == 1]
+        if req_superhost:
+            df_india = df_india[df_india['host_is_superhost'] == 1]
 
-            st.pydeck_chart(
-                pdk.Deck(
-                    layers=[column_layer, scatter_layer],
-                    initial_view_state=india_view_state,
-                    tooltip={"html": "{tooltip_text}", "style": {"color": "white", "backgroundColor": "#222222", "fontSize": "12px"}}
+        if len(df_india) == 0:
+            st.warning("⚠️ No Indian listings match the selected filters. Please broaden your selection criteria.")
+        else:
+            # Metrics Row for India
+            in_kpi1, in_kpi2, in_kpi3, in_kpi4, in_kpi5 = st.columns(5)
+            with in_kpi1:
+                st.metric("Properties Mapped", f"{len(df_india):,}")
+            with in_kpi2:
+                in_med_p = df_india['price_inr'].median()
+                if currency_pref.startswith("INR"):
+                    st.metric("Median Nightly Rate", f"₹{in_med_p:,.0f}")
+                else:
+                    st.metric("Median Nightly Rate", f"${in_med_p/83.0:.0f}")
+            with in_kpi3:
+                in_avg_occ = df_india['occupancy_rate_365'].mean() * 100.0
+                st.metric("Avg Annual Occupancy", f"{in_avg_occ:.1f}%")
+            with in_kpi4:
+                in_pool_pct = df_india['has_pool'].mean() * 100.0
+                st.metric("With Private Pool", f"{in_pool_pct:.1f}%")
+            with in_kpi5:
+                in_pwr_pct = df_india['has_inverter_power_backup'].mean() * 100.0
+                st.metric("Power Backup Coverage", f"{in_pwr_pct:.1f}%")
+
+            col_map_box, col_side_box = st.columns([3, 1])
+
+            with col_side_box:
+                color_point_by = st.selectbox(
+                    "Color Points By",
+                    options=["Price Tier (INR)", "Superhost Status", "Review Rating", "Private Pool Presence"]
                 )
+                st.markdown(f"**Viewing: {selected_city}**")
+                st.write(df_india['price_inr'].describe()[['min', '25%', '50%', '75%', 'max']].rename({
+                    'min': 'Min (₹)', '25%': '25% (₹)', '50%': 'Median (₹)', '75%': '75% (₹)', 'max': 'Max (₹)'
+                }))
+
+            with col_map_box:
+                plot_in_df = df_india.copy()
+
+                if color_point_by == "Superhost Status":
+                    plot_in_df['r'] = np.where(plot_in_df['host_is_superhost'] == 1, 0, 255)
+                    plot_in_df['g'] = np.where(plot_in_df['host_is_superhost'] == 1, 53, 90)
+                    plot_in_df['b'] = np.where(plot_in_df['host_is_superhost'] == 1, 128, 95)
+                elif color_point_by == "Private Pool Presence":
+                    plot_in_df['r'] = np.where(plot_in_df['has_pool'] == 1, 0, 240)
+                    plot_in_df['g'] = np.where(plot_in_df['has_pool'] == 1, 166, 100)
+                    plot_in_df['b'] = np.where(plot_in_df['has_pool'] == 1, 153, 100)
+                elif color_point_by == "Review Rating":
+                    plot_in_df['r'] = np.where(plot_in_df['review_scores_rating'] >= 4.85, 0, 255)
+                    plot_in_df['g'] = np.where(plot_in_df['review_scores_rating'] >= 4.85, 166, 120)
+                    plot_in_df['b'] = np.where(plot_in_df['review_scores_rating'] >= 4.85, 153, 50)
+                else: # Default: Price Tier
+                    plot_in_df['r'] = np.clip((plot_in_df['price_inr'] / 20000.0) * 255, 40, 255).astype(int)
+                    plot_in_df['g'] = np.clip(200 - (plot_in_df['price_inr'] / 20000.0) * 150, 30, 200).astype(int)
+                    plot_in_df['b'] = 90
+
+                plot_in_df['tooltip_text'] = (
+                    "<b>" + plot_in_df['name'] + "</b><br>" +
+                    "City: " + plot_in_df['city'] + " (" + plot_in_df['neighborhood'] + ")<br>" +
+                    "Rate: ₹" + plot_in_df['price_inr'].apply(lambda x: f"{x:,}") + " / night ($" + plot_in_df['price_usd'].astype(str) + ")<br>" +
+                    "Type: " + plot_in_df['room_type'] + "<br>" +
+                    "Capacity: " + plot_in_df['accommodates'].astype(str) + " Guests (" + plot_in_df['bedrooms'].astype(str) + " Beds)<br>" +
+                    "Rating: " + plot_in_df['review_scores_rating'].round(2).astype(str) + " ★ | Superhost: " + np.where(plot_in_df['host_is_superhost'] == 1, "Yes", "No") + "<br>" +
+                    "Power Backup: " + np.where(plot_in_df['has_inverter_power_backup'] == 1, "Yes (Inverter)", "No") + "<br>" +
+                    "Private Pool: " + np.where(plot_in_df['has_pool'] == 1, "Yes", "No")
+                )
+
+                # Dynamically set camera from coordinates map
+                cam_lat, cam_lon, cam_zoom, cam_pitch = CITY_CAMERA_COORDINATES.get(
+                    selected_city, CITY_CAMERA_COORDINATES['All India (National Overview)']
+                )
+                
+                # Dynamic radius based on zoom level
+                dot_radius = 45000 if cam_zoom < 6 else (1500 if cam_zoom > 10 else 6500)
+
+                layer_india = pdk.Layer(
+                    "ScatterplotLayer",
+                    data=plot_in_df,
+                    get_position=["longitude", "latitude"],
+                    get_radius=dot_radius,
+                    get_fill_color=["r", "g", "b", 200],
+                    pickable=True,
+                    auto_highlight=True
+                )
+
+                st.pydeck_chart(
+                    pdk.Deck(
+                        layers=[layer_india],
+                        initial_view_state=pdk.ViewState(
+                            latitude=cam_lat,
+                            longitude=cam_lon,
+                            zoom=cam_zoom,
+                            pitch=cam_pitch
+                        ),
+                        tooltip={"html": "{tooltip_text}", "style": {"color": "white", "backgroundColor": "#222222", "fontSize": "12px"}}
+                    )
+                )
+
+            # Sub-Charts for Selected Indian Segment
+            col_bar_left, col_bar_right = st.columns(2)
+
+            with col_bar_left:
+                fig_neigh = px.box(
+                    df_india,
+                    x='neighborhood',
+                    y='price_inr' if currency_pref.startswith("INR") else 'price_usd',
+                    color='neighborhood',
+                    labels={'price_inr': 'Nightly Rate (INR ₹)', 'price_usd': 'Nightly Rate (USD $)', 'neighborhood': 'Micro-Market'},
+                    title=f"Rate Distribution by Micro-Market in {selected_city}"
+                )
+                fig_neigh.update_layout(showlegend=False, height=380, margin=dict(t=40, b=20, l=20, r=20))
+                st.plotly_chart(fig_neigh, use_container_width=True)
+
+            with col_bar_right:
+                fig_in_hist = px.histogram(
+                    df_india,
+                    x='price_inr' if currency_pref.startswith("INR") else 'price_usd',
+                    nbins=35,
+                    color_discrete_sequence=['#FF5A5F'],
+                    marginal='box',
+                    labels={'price_inr': 'Nightly Rate (INR ₹)', 'price_usd': 'Nightly Rate (USD $)'},
+                    title=f"Nightly Rate Histogram for Filtered Selection (N={len(df_india):,})"
+                )
+                fig_in_hist.update_layout(showlegend=False, height=380, margin=dict(t=40, b=20, l=20, r=20))
+                st.plotly_chart(fig_in_hist, use_container_width=True)
+
+            # Property Listings Table
+            st.markdown("##### Filtered Properties Table (India)")
+            st.dataframe(
+                df_india[['name', 'city', 'neighborhood', 'room_type', 'accommodates', 'bedrooms', 'price_inr', 'price_usd', 'review_scores_rating', 'has_pool', 'has_inverter_power_backup', 'has_caretaker_or_cook']]
+                .rename(columns={
+                    'name': 'Property Name',
+                    'city': 'City',
+                    'neighborhood': 'Micro-Market',
+                    'room_type': 'Type',
+                    'accommodates': 'Guests',
+                    'bedrooms': 'Beds',
+                    'price_inr': 'Rate (₹)',
+                    'price_usd': 'Rate ($)',
+                    'review_scores_rating': 'Rating',
+                    'has_pool': 'Pool',
+                    'has_inverter_power_backup': 'Inverter',
+                    'has_caretaker_or_cook': 'Cook'
+                }),
+                use_container_width=True,
+                hide_index=True
             )
-
-        st.markdown("##### India Vacation Rental Economics & ADR Benchmark")
-        col_in_c1, col_in_c2 = st.columns(2)
-
-        with col_in_c1:
-            fig_in_bar = px.bar(
-                filtered_hubs.sort_values(by='avg_price_inr', ascending=True),
-                x='avg_price_inr' if currency_display.startswith("INR") else 'avg_price_usd',
-                y='hub',
-                orientation='h',
-                color='category',
-                labels={'avg_price_inr': 'Average Nightly Rate (INR ₹)', 'avg_price_usd': 'Nightly Rate (USD $)', 'hub': 'Rental Corridor'},
-                title="Average Daily Rate (ADR) Across Indian Vacation Rental Hubs"
-            )
-            fig_in_bar.update_layout(height=420, margin=dict(t=40, b=20, l=20, r=20))
-            st.plotly_chart(fig_in_bar, use_container_width=True)
-
-        with col_in_c2:
-            fig_in_occ = px.bar(
-                filtered_hubs.sort_values(by='occupancy_rate', ascending=True),
-                x='occupancy_rate',
-                y='hub',
-                orientation='h',
-                color='roi_tier',
-                labels={'occupancy_rate': 'Estimated Occupancy Rate (%)', 'hub': 'Rental Corridor'},
-                title="Estimated Annual Occupancy Rate Across Destinations"
-            )
-            fig_in_occ.update_layout(height=420, margin=dict(t=40, b=20, l=20, r=20), xaxis_tickformat='.0%')
-            st.plotly_chart(fig_in_occ, use_container_width=True)
-
-        st.markdown("##### Comprehensive Market Benchmark Table")
-        st.dataframe(
-            filtered_hubs[['hub', 'state', 'category', 'avg_price_inr', 'avg_price_usd', 'occupancy_rate', 'top_amenity', 'roi_tier', 'annual_rev_lakhs']]
-            .rename(columns={
-                'hub': 'Destination Hub',
-                'state': 'State',
-                'category': 'Segment',
-                'avg_price_inr': 'Avg ADR (₹)',
-                'avg_price_usd': 'Avg ADR ($)',
-                'occupancy_rate': 'Occupancy',
-                'top_amenity': 'Key Value Driver',
-                'roi_tier': 'Yield Tier',
-                'annual_rev_lakhs': 'Est. Gross (Lakhs ₹)'
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
 
 
 # =========================================================
@@ -931,8 +989,31 @@ with tab_india:
 
     st.markdown("---")
 
-    # Section 2: Interactive Investment Feasibility Calculator
-    st.markdown("### 2. Interactive Investment Yield & Payback Simulator (INR ₹ Lakhs)")
+    # National City Benchmarks Table
+    st.markdown("### 2. National Market Benchmarks Across 17 Indian Destinations")
+    city_sum_df = get_indian_city_summary()
+    st.dataframe(
+        city_sum_df.rename(columns={
+            'city': 'Destination City',
+            'state': 'State',
+            'region': 'Region',
+            'total_listings': 'Mapped Properties',
+            'median_adr_inr': 'Median Nightly (₹)',
+            'avg_adr_inr': 'Avg ADR (₹)',
+            'avg_occupancy': 'Occupancy %',
+            'pct_superhost': 'Superhost %',
+            'pct_with_pool': 'With Pool %',
+            'pct_power_backup': 'Power Backup %',
+            'avg_gross_annual_lakhs': 'Est. Gross (Lakhs ₹)'
+        }),
+        use_container_width=True,
+        hide_index=True
+    )
+
+    st.markdown("---")
+
+    # Section 3: Interactive Investment Feasibility Calculator
+    st.markdown("### 3. Interactive Investment Yield & Payback Simulator (INR ₹ Lakhs)")
     st.markdown("Evaluate financial viability, gross rental yields, and capital payback periods for vacation rental acquisitions in India.")
 
     sim_c1, sim_c2 = st.columns([1, 1])
