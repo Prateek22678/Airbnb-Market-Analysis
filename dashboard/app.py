@@ -30,6 +30,8 @@ from src.features import (
 from src.india_market import (
     get_indian_listings_df,
     get_indian_city_summary,
+    get_indian_zipcode_summary,
+    get_indian_zipcodes,
     get_indian_hubs_df,
     CITY_CAMERA_COORDINATES,
     calculate_india_investment_roi
@@ -394,7 +396,7 @@ with tab_map:
 
         df_india_all = get_indian_listings_df()
 
-        col_in_filter1, col_in_filter2, col_in_filter3, col_in_filter4 = st.columns([1.5, 1.2, 1.2, 1.1])
+        col_in_filter1, col_in_filter2, col_in_filter3, col_in_filter4, col_in_filter5 = st.columns([1.3, 1.2, 1.2, 1.1, 1.0])
         
         with col_in_filter1:
             selected_city = st.selectbox(
@@ -411,12 +413,21 @@ with tab_map:
         with col_in_filter2:
             avail_neighs = sorted(df_india['neighborhood'].unique().tolist())
             selected_neighs = st.multiselect(
-                "📍 Micro-Market / Neighborhood",
+                "📍 Micro-Market / Area",
                 options=avail_neighs,
                 default=avail_neighs[:min(4, len(avail_neighs))] if len(avail_neighs) > 4 else avail_neighs
             )
 
         with col_in_filter3:
+            avail_zips = sorted(df_india['zipcode'].dropna().astype(str).unique().tolist())
+            selected_zips = st.multiselect(
+                "📮 Postal PIN / ZIP Code",
+                options=avail_zips,
+                default=avail_zips,
+                help="Filter by authentic 6-digit Indian Postal PIN / ZIP codes"
+            )
+
+        with col_in_filter4:
             room_options = sorted(df_india_all['room_type'].unique().tolist())
             selected_in_rooms = st.multiselect(
                 "🏠 Property / Room Type",
@@ -424,7 +435,7 @@ with tab_map:
                 default=room_options
             )
 
-        with col_in_filter4:
+        with col_in_filter5:
             currency_pref = st.radio("Display Currency", options=["INR (₹)", "USD ($)"], horizontal=True)
 
         # Amenity Filters Row
@@ -443,6 +454,8 @@ with tab_map:
         # Apply Filters
         if selected_neighs:
             df_india = df_india[df_india['neighborhood'].isin(selected_neighs)]
+        if selected_zips:
+            df_india = df_india[df_india['zipcode'].astype(str).isin(selected_zips)]
         if selected_in_rooms:
             df_india = df_india[df_india['room_type'].isin(selected_in_rooms)]
         if req_pool:
@@ -514,6 +527,7 @@ with tab_map:
                 plot_in_df['tooltip_text'] = (
                     "<b>" + plot_in_df['name'] + "</b><br>" +
                     "City: " + plot_in_df['city'] + " (" + plot_in_df['neighborhood'] + ")<br>" +
+                    "📮 Postal PIN / ZIP: <b>" + plot_in_df['zipcode'].astype(str) + "</b><br>" +
                     "Rate: ₹" + plot_in_df['price_inr'].apply(lambda x: f"{x:,}") + " / night ($" + plot_in_df['price_usd'].astype(str) + ")<br>" +
                     "Type: " + plot_in_df['room_type'] + "<br>" +
                     "Capacity: " + plot_in_df['accommodates'].astype(str) + " Guests (" + plot_in_df['bedrooms'].astype(str) + " Beds)<br>" +
@@ -989,26 +1003,54 @@ with tab_india:
 
     st.markdown("---")
 
-    # National City Benchmarks Table
-    st.markdown("### 2. National Market Benchmarks Across 17 Indian Destinations")
-    city_sum_df = get_indian_city_summary()
-    st.dataframe(
-        city_sum_df.rename(columns={
-            'city': 'Destination City',
-            'state': 'State',
-            'region': 'Region',
-            'total_listings': 'Mapped Properties',
-            'median_adr_inr': 'Median Nightly (₹)',
-            'avg_adr_inr': 'Avg ADR (₹)',
-            'avg_occupancy': 'Occupancy %',
-            'pct_superhost': 'Superhost %',
-            'pct_with_pool': 'With Pool %',
-            'pct_power_backup': 'Power Backup %',
-            'avg_gross_annual_lakhs': 'Est. Gross (Lakhs ₹)'
-        }),
-        use_container_width=True,
-        hide_index=True
-    )
+    # National City & PIN Code Benchmarks Tables
+    st.markdown("### 2. National Market Benchmarks Across 17 Indian Destinations & 42 PIN Codes")
+    
+    subtab_city, subtab_zip = st.tabs([
+        "🏙️ City & State Benchmarks (17 Corridors)",
+        "📮 Postal PIN / ZIP Code Breakdown (42 Micro-Markets)"
+    ])
+    
+    with subtab_city:
+        city_sum_df = get_indian_city_summary()
+        st.dataframe(
+            city_sum_df.rename(columns={
+                'city': 'Destination City',
+                'state': 'State',
+                'region': 'Region',
+                'total_listings': 'Mapped Properties',
+                'median_adr_inr': 'Median Nightly (₹)',
+                'avg_adr_inr': 'Avg ADR (₹)',
+                'avg_occupancy': 'Occupancy %',
+                'pct_superhost': 'Superhost %',
+                'pct_with_pool': 'With Pool %',
+                'pct_power_backup': 'Power Backup %',
+                'avg_gross_annual_lakhs': 'Est. Gross (Lakhs ₹)'
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+
+    with subtab_zip:
+        zip_sum_df = get_indian_zipcode_summary()
+        st.dataframe(
+            zip_sum_df.rename(columns={
+                'zipcode': 'Postal PIN / ZIP Code',
+                'neighborhood': 'Micro-Market / Area',
+                'city': 'City',
+                'state': 'State',
+                'total_listings': 'Properties',
+                'median_adr_inr': 'Median Nightly (₹)',
+                'avg_adr_inr': 'Avg ADR (₹)',
+                'avg_occupancy': 'Occupancy %',
+                'pct_superhost': 'Superhost %',
+                'pct_pool': 'Pool %',
+                'pct_power_backup': 'Power Backup %',
+                'avg_gross_annual_lakhs': 'Est. Gross (Lakhs ₹)'
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
 
     st.markdown("---")
 

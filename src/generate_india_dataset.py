@@ -9,6 +9,105 @@ import os
 import numpy as np
 import pandas as pd
 
+# Authentic 6-Digit Indian Postal PIN Codes (Postal Index Numbers / ZIP codes)
+NEIGHBORHOOD_PINCODES = {
+    # Goa (403xxx)
+    'Assagao': '403507',
+    'Anjuna': '403509',
+    'Vagator': '403509',
+    'Candolim': '403515',
+    'Siolim': '403517',
+    'Palolem': '403702',
+    'Benaulim': '403716',
+
+    # Mumbai (400xxx)
+    'Bandra West': '400050',
+    'Juhu': '400049',
+    'Colaba': '400005',
+    'Khar West': '400052',
+    'Powai': '400076',
+
+    # Alibaug (402xxx)
+    'Mandwa': '402201',
+    'Awas': '402201',
+    'Kihim': '402201',
+
+    # Lonavala & Khandala (410xxx)
+    'Tungarli': '410401',
+    'Gold Valley': '410401',
+    'Khandala Ghat': '410301',
+
+    # Jaipur (302xxx)
+    'Pink City / Hawa Mahal': '302002',
+    'C-Scheme': '302001',
+    'Civil Lines': '302006',
+    'Bani Park': '302016',
+
+    # Udaipur (313xxx)
+    'Lake Pichola': '313001',
+    'Fateh Sagar': '313001',
+    'Ambavgarh': '313001',
+
+    # Manali (175xxx)
+    'Old Manali': '175131',
+    'Solang Valley': '175131',
+    'Naggar': '175130',
+    'Vashisht': '175131',
+
+    # Shimla & Mashobra (171xxx)
+    'The Mall Road': '171001',
+    'Mashobra': '171007',
+    'Kufri': '171012',
+
+    # Dharamshala & McLeodGanj (176xxx)
+    'McLeodGanj': '176219',
+    'Dharamkot': '176219',
+    'Bhagsunag': '176219',
+
+    # Bengaluru (560xxx)
+    'Indiranagar': '560038',
+    'Koramangala': '560034',
+    'Whitefield': '560066',
+    'HSR Layout': '560102',
+
+    # Coorg (571xxx)
+    'Madikeri': '571201',
+    'Kushalnagar': '571234',
+    'Virajpet': '571218',
+
+    # Kerala (68xxxx - 69xxxx)
+    'Alleppey Backwaters': '688013',
+    'Kumarakom': '686563',
+    'Fort Kochi': '682001',
+    'Munnar': '685612',
+    'Varkala': '695141',
+
+    # Delhi NCR (110xxx / 122xxx)
+    'Hauz Khas Village': '110016',
+    'Greater Kailash': '110048',
+    'DLF Cyber City (Gurgaon)': '122002',
+    'Saket': '110017',
+
+    # Rishikesh (249xxx)
+    'Tapovan': '249192',
+    'Laxman Jhula': '249302',
+    'Shivpuri': '249192',
+
+    # Mussoorie & Landour (248xxx)
+    'Landour / Char Dukan': '248179',
+    'The Mall Mussoorie': '248179',
+
+    # Pondicherry (605xxx)
+    'White Town (French Quarter)': '605001',
+    'Auroville': '605101',
+    'Promenade Beach': '605001',
+
+    # Varanasi (221xxx)
+    'Assi Ghat': '221005',
+    'Dashashwamedh': '221001',
+    'Cantonment': '221002',
+}
+
 # Define Master Indian Micro-Markets & Coordinates
 INDIAN_CITIES_SPECS = [
     # 1. Goa (Coastal & Party Hub)
@@ -326,6 +425,8 @@ def generate_dataset(output_path: str = "data/processed/india_listings_cleaned.c
             prefix = np.random.choice(['Serene', 'Luxury', 'Heritage', 'Cozy', 'Boutique', 'Scenic', 'Boho', 'Grand'])
             name = f"{prefix} {neigh_name} {property_archetype.split()[0]} with {'Pool' if has_pool else ('View' if has_scenic else 'Fast Wi-Fi')}"
 
+            pincode = NEIGHBORHOOD_PINCODES.get(neigh_name, '110001')
+
             records.append({
                 'id': current_id,
                 'name': name,
@@ -335,6 +436,9 @@ def generate_dataset(output_path: str = "data/processed/india_listings_cleaned.c
                 'neighborhood': neigh_name,
                 'sub_zone': sub_zone,
                 'property_archetype': property_archetype,
+                'zipcode': pincode,
+                'pincode': pincode,
+                'postal_code': pincode,
                 'latitude': lat,
                 'longitude': lon,
                 'room_type': room_type,
@@ -361,7 +465,8 @@ def generate_dataset(output_path: str = "data/processed/india_listings_cleaned.c
                 'has_scenic_view': has_scenic,
                 'occupancy_rate_30': occ_30,
                 'occupancy_rate_365': occ_365,
-                'annual_gross_lakhs': annual_gross_lakhs
+                'annual_gross_lakhs': annual_gross_lakhs,
+                'annual_gross_revenue_lakhs': annual_gross_lakhs
             })
             current_id += 1
 
